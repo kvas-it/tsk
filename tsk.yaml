@@ -1,0 +1,7 @@
+dir: ./tsk
+project: project.md
+digits: 3
+statuses:
+  - open
+  - in-progress
+  - done
