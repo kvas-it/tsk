@@ -26,3 +26,25 @@ No server, no database, no API to learn. Just files.
 - **Convention over structure.** Light conventions, not rigid schemas. The
   system should be useful before you've read any documentation.
 - **Git-native.** History, collaboration, and branching come free.
+
+## What a task looks like
+
+```markdown
+---
+status: open
+created: 2026-03-16
+priority: high
+---
+
+# Make the thing work
+
+Description goes here. Free-form markdown.
+```
+
+Metadata lives in YAML front matter. The title is the first `# heading`.
+The body is whatever you need it to be.
+
+The core fields are `status` and `created`. Beyond that — add whatever
+you want. Need `priority`? Just add it. Need `sprint`, `estimate`,
+`blocked-by`? Type it in. No admin panel, no custom field configuration,
+no screen schemes. Your tools will see it because it's just YAML.
