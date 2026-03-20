@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-03-20 — CLI improvements
+
+- Fixed digit width bug in `tsk list` (was hardcoded to 3)
+- Added `tsk show <N>` — formatted ticket display
+- Added negative/multi-status filters: `tsk list -done`,
+  `tsk list open in-progress`
+- Flexible ticket number input: `tsk show 3` and `tsk show 003` both work
+- 17 tests (up from 10)
+- Closed tickets 006–009
+
 ## 2026-03-20 — MVP ready
 
 - Created Claude Code skill (`.claude/skills/tsk/SKILL.md`) — Claude

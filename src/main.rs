@@ -170,6 +170,16 @@ fn next_number(tickets: &[Ticket]) -> u32 {
     tickets.iter().map(|t| t.number).max().unwrap_or(0) + 1
 }
 
+/// Find a ticket by number.
+fn find_ticket(tickets: &[Ticket], num: u32) -> Option<&Ticket> {
+    tickets.iter().find(|t| t.number == num)
+}
+
+/// Parse a ticket number from user input. Accepts "3", "03", "003".
+fn parse_ticket_number(input: &str) -> Option<u32> {
+    input.parse::<u32>().ok()
+}
+
 // --- Front matter manipulation ---
 
 /// Replace (or insert) a field in YAML front matter, preserving
@@ -207,23 +217,110 @@ fn set_frontmatter_field(content: &str, key: &str, value: &str)
     out
 }
 
+// --- Filters ---
+
+/// A status filter: either include matching or exclude matching.
+enum StatusFilter {
+    Include(Vec<String>),
+    Exclude(Vec<String>),
+}
+
+/// Parse filter args. A leading `-` means exclude, otherwise include.
+/// Supports mixing: `tsk list open in-progress` or `tsk list -done`.
+fn parse_filters(args: &[String]) -> Option<StatusFilter> {
+    if args.is_empty() {
+        return None;
+    }
+    let has_negated = args.iter().any(|a| a.starts_with('-'));
+    let has_positive = args.iter().any(|a| !a.starts_with('-'));
+
+    if has_negated && has_positive {
+        eprintln!(
+            "error: can't mix positive and negative status filters"
+        );
+        std::process::exit(1);
+    }
+
+    if has_negated {
+        let statuses: Vec<String> = args.iter()
+            .map(|a| a.strip_prefix('-').unwrap().to_string())
+            .collect();
+        Some(StatusFilter::Exclude(statuses))
+    } else {
+        let statuses: Vec<String> = args.iter()
+            .map(|a| a.to_string())
+            .collect();
+        Some(StatusFilter::Include(statuses))
+    }
+}
+
+fn matches_filter(status: &str, filter: &Option<StatusFilter>) -> bool {
+    match filter {
+        None => true,
+        Some(StatusFilter::Include(statuses)) => {
+            statuses.iter().any(|s| s == status)
+        }
+        Some(StatusFilter::Exclude(statuses)) => {
+            !statuses.iter().any(|s| s == status)
+        }
+    }
+}
+
 // --- Commands ---
 
-fn cmd_list(tickets: &[Ticket], filter: Option<&str>) {
+fn cmd_list(
+    tickets: &[Ticket], filter: &Option<StatusFilter>,
+    digits: usize,
+) {
     let max_status_len = tickets.iter()
+        .filter(|t| matches_filter(&t.status, filter))
         .map(|t| t.status.len())
         .max()
         .unwrap_or(4);
 
     for t in tickets {
-        if let Some(s) = filter {
-            if t.status != s { continue; }
-        }
+        if !matches_filter(&t.status, filter) { continue; }
         println!(
-            "{:0>3}  {:<width$}  {}",
+            "{:0>w$}  {:<sw$}  {}",
             t.number, t.status, t.title,
-            width = max_status_len,
+            w = digits, sw = max_status_len,
         );
+    }
+}
+
+fn cmd_show(ticket: &Ticket, digits: usize) {
+    let content = fs::read_to_string(&ticket.path)
+        .expect("can't read ticket file");
+
+    println!(
+        "{:0>w$}  [{}]  {}",
+        ticket.number, ticket.status, ticket.title,
+        w = digits,
+    );
+    println!();
+
+    // Print the body (everything after the title).
+    let mut past_fm = false;
+    let mut past_title = false;
+    for line in content.lines() {
+        if !past_fm {
+            if line.trim() == "---" {
+                past_fm = !past_fm;
+            }
+            // Skip first ---, wait for second ---
+            continue;
+        }
+        if !past_title {
+            if line.starts_with("# ") {
+                past_title = true;
+                continue;
+            }
+            // Skip blank lines between front matter and title.
+            if line.trim().is_empty() { continue; }
+        }
+        if past_title {
+            println!("{line}");
+        }
     }
 }
 
@@ -257,17 +354,8 @@ fn cmd_new(
 }
 
 fn cmd_status(
-    tickets: &[Ticket], num: u32, new_status: &str,
-    config: &Config,
+    ticket: &Ticket, new_status: &str, config: &Config,
 ) {
-    let Some(ticket) = tickets.iter().find(|t| t.number == num) else {
-        eprintln!(
-            "error: ticket {:0>width$} not found",
-            num, width = config.digits,
-        );
-        std::process::exit(1);
-    };
-
     if !config.statuses.contains(&new_status.to_string()) {
         eprintln!("error: unknown status '{new_status}'");
         eprintln!(
@@ -301,11 +389,29 @@ fn today() -> String {
         .to_string()
 }
 
+fn require_ticket<'a>(
+    tickets: &'a [Ticket], input: &str, digits: usize,
+) -> &'a Ticket {
+    let Some(num) = parse_ticket_number(input) else {
+        eprintln!("error: '{input}' is not a valid ticket number");
+        std::process::exit(1);
+    };
+    let Some(ticket) = find_ticket(tickets, num) else {
+        eprintln!(
+            "error: ticket {:0>w$} not found", num, w = digits,
+        );
+        std::process::exit(1);
+    };
+    ticket
+}
+
 fn usage() {
     eprintln!("tsk — task management with markdown files\n");
     eprintln!("usage:");
     eprintln!("  tsk new [title]           Create a new ticket");
-    eprintln!("  tsk list [status]         List tickets");
+    eprintln!("  tsk list [status...]      List tickets");
+    eprintln!("  tsk list -<status>        Exclude a status");
+    eprintln!("  tsk show <N>              Show a ticket");
     eprintln!("  tsk status <N> <status>   Change ticket status");
 }
 
@@ -325,8 +431,18 @@ fn main() {
 
     match args[1].as_str() {
         "list" | "ls" => {
-            let filter = args.get(2).map(|s| s.as_str());
-            cmd_list(&tickets, filter);
+            let filter = parse_filters(&args[2..]);
+            cmd_list(&tickets, &filter, config.digits);
+        }
+        "show" => {
+            if args.len() < 3 {
+                eprintln!("usage: tsk show <number>");
+                std::process::exit(1);
+            }
+            let ticket = require_ticket(
+                &tickets, &args[2], config.digits,
+            );
+            cmd_show(ticket, config.digits);
         }
         "new" => {
             let title = if args.len() > 2 {
@@ -341,14 +457,10 @@ fn main() {
                 eprintln!("usage: tsk status <number> <status>");
                 std::process::exit(1);
             }
-            let num: u32 = args[2].parse().unwrap_or_else(|_| {
-                eprintln!(
-                    "error: '{}' is not a valid ticket number",
-                    args[2],
-                );
-                std::process::exit(1);
-            });
-            cmd_status(&tickets, num, &args[3], &config);
+            let ticket = require_ticket(
+                &tickets, &args[2], config.digits,
+            );
+            cmd_status(ticket, &args[3], &config);
         }
         _ => {
             eprintln!("unknown command: {}", args[1]);
@@ -461,5 +573,53 @@ mod tests {
             Ticket { number: 5, title: String::new(), status: String::new(), path: PathBuf::new() },
         ];
         assert_eq!(next_number(&tickets), 6);
+    }
+
+    // --- Flexible ticket number input ---
+
+    #[test]
+    fn parse_ticket_number_bare() {
+        assert_eq!(parse_ticket_number("3"), Some(3));
+    }
+
+    #[test]
+    fn parse_ticket_number_padded() {
+        assert_eq!(parse_ticket_number("003"), Some(3));
+    }
+
+    #[test]
+    fn parse_ticket_number_invalid() {
+        assert_eq!(parse_ticket_number("abc"), None);
+    }
+
+    // --- Status filters ---
+
+    #[test]
+    fn filter_include_single() {
+        let f = parse_filters(&["open".into()]);
+        assert!(matches_filter("open", &f));
+        assert!(!matches_filter("done", &f));
+    }
+
+    #[test]
+    fn filter_include_multiple() {
+        let f = parse_filters(&["open".into(), "in-progress".into()]);
+        assert!(matches_filter("open", &f));
+        assert!(matches_filter("in-progress", &f));
+        assert!(!matches_filter("done", &f));
+    }
+
+    #[test]
+    fn filter_exclude() {
+        let f = parse_filters(&["-done".into()]);
+        assert!(matches_filter("open", &f));
+        assert!(!matches_filter("done", &f));
+    }
+
+    #[test]
+    fn filter_none() {
+        let f = parse_filters(&[]);
+        assert!(matches_filter("open", &f));
+        assert!(matches_filter("done", &f));
     }
 }
