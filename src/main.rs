@@ -376,6 +376,181 @@ fn cmd_status(
     println!("{name}: {} -> {new_status}", ticket.status);
 }
 
+fn cmd_log(dir: &Path, config: &Config, days: u32) {
+    // Show uncommitted changes first.
+    let diff_output = Command::new("git")
+        .args(["status", "--porcelain", "--"])
+        .arg(dir)
+        .output();
+    if let Ok(output) = diff_output {
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut pending: Vec<String> = Vec::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() { continue; }
+            let (code, path) = line.split_at(2);
+            let path = path.trim();
+            let Some(stem) = extract_ticket_stem(path, config)
+            else {
+                continue;
+            };
+            let action = match code.trim() {
+                "A" | "??" => "new",
+                "M" | "MM" => "modified",
+                "D" => "deleted",
+                _ => "changed",
+            };
+            pending.push(format!(
+                "(pending) {stem}  {:<9}  {}",
+                action,
+                ticket_title_from_file(
+                    &dir.join(format!("{stem}.md")),
+                ),
+            ));
+        }
+        if !pending.is_empty() {
+            for line in &pending {
+                println!("{line}");
+            }
+            println!();
+        }
+    }
+
+    // Parse git log for committed changes.
+    let since = format!("{} days ago", days);
+    let log_output = Command::new("git")
+        .args([
+            "log", "--since", &since,
+            "--name-status", "--pretty=format:%H %ai",
+            "--",
+        ])
+        .arg(dir)
+        .output()
+        .expect("can't run git log");
+    let text = String::from_utf8_lossy(&log_output.stdout);
+
+    let mut entries: Vec<String> = Vec::new();
+    let mut current_date = String::new();
+    let mut current_hash = String::new();
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+
+        // Hash + date: "abc123 2026-03-20 16:50:13 +0100"
+        if line.len() > 50 && line.as_bytes()[40] == b' ' {
+            current_hash = line[..40].to_string();
+            current_date = line[41..51].to_string();
+            continue;
+        }
+
+        // File status line: "A\ttsk/006.md" or "M\ttsk/006.md"
+        let Some((code, path)) = line.split_once('\t') else {
+            continue;
+        };
+        let Some(stem) = extract_ticket_stem(path, config)
+        else {
+            continue;
+        };
+
+        match code {
+            "A" => {
+                entries.push(format!(
+                    "{}  {}  {:<9}  {}",
+                    current_date, stem, "created",
+                    ticket_title_at_commit(dir, path, &current_hash),
+                ));
+            }
+            "M" => {
+                if let Some((from, to)) =
+                    status_change_in_commit(path, &current_hash)
+                {
+                    entries.push(format!(
+                        "{}  {}  {} -> {}",
+                        current_date, stem, from, to,
+                    ));
+                } else {
+                    entries.push(format!(
+                        "{}  {}  {:<9}  {}",
+                        current_date, stem, "updated",
+                        ticket_title_from_file(
+                            &dir.join(format!("{stem}.md")),
+                        ),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for entry in &entries {
+        println!("{entry}");
+    }
+
+    if entries.is_empty() {
+        println!("(no ticket changes in the last {days} days)");
+    }
+}
+
+/// Extract ticket stem (e.g. "006") from a path like "tsk/006.md".
+fn extract_ticket_stem(path: &str, config: &Config) -> Option<String> {
+    let filename = path.rsplit('/').next()?;
+    let stem = filename.strip_suffix(".md")?;
+    if stem.len() != config.digits { return None; }
+    stem.parse::<u32>().ok()?;
+    Some(stem.to_string())
+}
+
+/// Get a ticket title by reading the file (for current state).
+fn ticket_title_from_file(path: &Path) -> String {
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let (_, title) = parse_ticket(&content);
+    title
+}
+
+/// Get a ticket title from a specific commit.
+fn ticket_title_at_commit(
+    _dir: &Path, path: &str, rev: &str,
+) -> String {
+    let output = Command::new("git")
+        .args(["show", &format!("{rev}:{path}")])
+        .output();
+    match output {
+        Ok(out) => {
+            let content = String::from_utf8_lossy(&out.stdout);
+            let (_, title) = parse_ticket(&content);
+            title
+        }
+        Err(_) => String::new(),
+    }
+}
+
+/// Check if a specific commit changed the status field.
+fn status_change_in_commit(
+    path: &str, hash: &str,
+) -> Option<(String, String)> {
+    let output = Command::new("git")
+        .args(["diff", &format!("{hash}^"), hash, "--", path])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    let mut old_status = None;
+    let mut new_status = None;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("-status:") {
+            old_status = Some(rest.trim().to_string());
+        }
+        if let Some(rest) = line.strip_prefix("+status:") {
+            new_status = Some(rest.trim().to_string());
+        }
+    }
+    match (old_status, new_status) {
+        (Some(from), Some(to)) if from != to => Some((from, to)),
+        _ => None,
+    }
+}
+
 // --- Helpers ---
 
 fn today() -> String {
@@ -413,6 +588,7 @@ fn usage() {
     eprintln!("  tsk list -<status>        Exclude a status");
     eprintln!("  tsk show <N>              Show a ticket");
     eprintln!("  tsk status <N> <status>   Change ticket status");
+    eprintln!("  tsk log [days]            Recent activity (default: 7 days)");
 }
 
 // --- Main ---
@@ -451,6 +627,12 @@ fn main() {
                 None
             };
             cmd_new(&dir, &config, &tickets, title.as_deref());
+        }
+        "log" => {
+            let days: u32 = args.get(2)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(7);
+            cmd_log(&dir, &config, days);
         }
         "status" | "st" => {
             if args.len() < 4 {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-03-20 — Activity log
+
+- Added `tsk log [days]` — shows recent ticket activity from git history
+- Detects ticket creation, status changes, and updates
+- Shows uncommitted changes at the top
+- Defaults to last 7 days
+- Closed ticket 010
+
 ## 2026-03-20 — CLI improvements
 
 - Fixed digit width bug in `tsk list` (was hardcoded to 3)
