@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-20 — MVP ready
+
+- Created Claude Code skill (`.claude/skills/tsk/SKILL.md`) — Claude
+  can create, list, and modify tickets. Uses CLI when available, falls
+  back to direct file operations
+- Finalized front matter schema decisions: only `status` and `created`
+  are core, everything else is custom
+- Added getting started, CLI usage, and project structure to README
+- Closed tickets 003 and 005
+- All initial tickets (001–005) are done
+
 ## 2026-03-20 — Rust CLI v0.1
 
 - Built the `tsk` CLI — zero dependencies, ~300 lines of Rust
