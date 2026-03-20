@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-03-20 — Show formatting fix
+
+- Fixed `tsk show` printing two blank lines between header and body (now one)
+- Closed ticket 013
+
 ## 2026-03-20 — Documentation
 
 - Rewrote README — shorter, scannable, optimized for quick understanding

@@ -302,6 +302,7 @@ fn cmd_show(ticket: &Ticket, digits: usize) {
     // Print the body (everything after the title).
     let mut past_fm = false;
     let mut past_title = false;
+    let mut body_started = false;
     for line in content.lines() {
         if !past_fm {
             if line.trim() == "---" {
@@ -319,6 +320,11 @@ fn cmd_show(ticket: &Ticket, digits: usize) {
             if line.trim().is_empty() { continue; }
         }
         if past_title {
+            // Skip blank lines between title and body.
+            if !body_started {
+                if line.trim().is_empty() { continue; }
+                body_started = true;
+            }
             println!("{line}");
         }
     }
