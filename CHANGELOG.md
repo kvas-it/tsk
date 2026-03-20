@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-03-16 — Format spec (v0.1 draft)
+
+- Wrote `SPEC.md` — standalone format specification covering tickets,
+  comments, front matter, tsk.yaml, and tool requirements
+- Key decisions codified: `status` defaults to `open`, custom fields
+  are always allowed, tools must preserve unknown fields
+- Added task example and custom fields pitch to README
+- Closed ticket 001
+
 ## 2026-03-16 — Project bootstrap
 
 - Created the repository
