@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-03-20 — Rust CLI v0.1
+
+- Built the `tsk` CLI — zero dependencies, ~300 lines of Rust
+- Commands: `tsk new`, `tsk list`, `tsk status`
+- Hand-rolled YAML parsing for tsk.yaml and front matter
+- Front matter manipulation preserves unknown fields
+- 10 unit tests covering core logic
+- Closed ticket 004
+
+## 2026-03-20 — Tooling decisions
+
+- Decided on two complementary tools: Rust CLI for humans, Claude Code
+  skill for AI agents — both operating on the same files
+- Rust CLI commands: `tsk new`, `tsk list`, `tsk status`
+- Closed ticket 002
+- Opened tickets:
+  - 004: Build the tsk Rust CLI
+  - 005: Create Claude Code skill for tsk
+
 ## 2026-03-16 — Format spec (v0.1 draft)
 
 - Wrote `SPEC.md` — standalone format specification covering tickets,
