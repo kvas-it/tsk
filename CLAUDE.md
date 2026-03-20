@@ -87,6 +87,7 @@ it works with directories of markdown files with YAML front matter.
    what changed.
 
 4. **Definition of done:**
+   - The changes are covered by tests (if applicable)
    - The code works and tests pass (`cargo test`)
    - The ticket is marked `done`
    - CHANGELOG.md is updated
