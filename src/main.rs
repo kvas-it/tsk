@@ -1,4 +1,4 @@
-use std::{env, fs, path::{Path, PathBuf}, process::Command};
+use std::{env, fs, io::IsTerminal, path::{Path, PathBuf}, process::Command};
 
 // --- Config ---
 
@@ -345,12 +345,15 @@ fn cmd_new(
     );
     fs::write(&path, &content).expect("can't write ticket file");
 
-    match env::var("EDITOR") {
-        Ok(editor) if !editor.is_empty() => {
-            Command::new(&editor).arg(&path).status().ok();
+    if std::io::stdin().is_terminal() {
+        if let Ok(editor) = env::var("EDITOR") {
+            if !editor.is_empty() {
+                Command::new(&editor).arg(&path).status().ok();
+                return;
+            }
         }
-        _ => println!("{filename}"),
     }
+    println!("{filename}");
 }
 
 fn cmd_status(
