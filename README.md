@@ -1,31 +1,9 @@
 # tsk
 
-A task management system made of markdown files in a git repository.
+Task management with markdown files in a git repository.
 
-## The idea
-
-Software interaction exists on a spectrum: UI → API → filesystem → stream
-of bytes. Each level is simpler and easier to implement, but somewhat more
-limited in expressiveness. For task management, the filesystem level hits a
-sweet spot — it's simple enough that any tool (including AIs) can interact
-with it natively, yet expressive enough to capture real project structure.
-
-tsk is built on this insight:
-- **Tasks are markdown files.** Human-readable, AI-readable, diffable.
-- **Structure is directories.** Group, nest, and organize however you want.
-- **History is git.** Every change is tracked, branchable, mergeable.
-
-No server, no database, no API to learn. Just files.
-
-## Design principles
-
-- **AI-friendly first.** The filesystem is the interface. Any tool that can
-  read and write files can be a full participant.
-- **Human-friendly always.** Markdown is for humans too. You can manage your
-  tasks with nothing but a text editor and `ls`.
-- **Convention over structure.** Light conventions, not rigid schemas. The
-  system should be useful before you've read any documentation.
-- **Git-native.** History, collaboration, and branching come free.
+Tasks are files. Structure is directories. History is git.
+No server, no database, no API. Just files.
 
 ## What a task looks like
 
@@ -33,64 +11,72 @@ No server, no database, no API to learn. Just files.
 ---
 status: open
 created: 2026-03-16
-priority: high
 ---
 
-# Make the thing work
+# Fix the login bug
 
-Description goes here. Free-form markdown.
+The login form accepts empty passwords. Add validation.
 ```
 
-Metadata lives in YAML front matter. The title is the first `# heading`.
-The body is whatever you need it to be.
-
-The core fields are `status` and `created`. Beyond that — add whatever
-you want. Need `priority`? Just add it. Need `sprint`, `estimate`,
-`blocked-by`? Type it in. No admin panel, no custom field configuration,
-no screen schemes. Your tools will see it because it's just YAML.
+YAML front matter for metadata, `# title` for the title, markdown body
+for everything else. Add any fields you want — `priority`, `tags`,
+`sprint`, whatever. It's just YAML.
 
 ## Getting started
 
-### Just files
+Add a `tsk/` directory to your repo. Create `001.md`. Done.
 
-Create a `tsk.yaml` in your repo root (it can be empty) and a `tsk/`
-directory. Start adding `001.md`, `002.md`, etc. That's it.
+Optionally add `tsk.yaml` at the repo root for configuration:
 
-### With the CLI
+```yaml
+dir: ./tsk          # where tickets live (default: ./tsk)
+digits: 3           # ticket number width (default: 3)
+statuses:           # allowed statuses (defaults below)
+  - open
+  - in-progress
+  - done
+```
+
+### CLI
 
 ```
 cargo install --git https://github.com/kvas-it/tsk
 ```
 
 ```
-tsk new "Fix the login bug"    # creates the next ticket, opens $EDITOR
+tsk new "Fix the login bug"    # create ticket, open $EDITOR
 tsk list                       # all tickets
-tsk list open                  # just open ones
-tsk status 42 done             # mark ticket 42 as done
+tsk list -done                 # everything except done
+tsk show 42                    # show a ticket
+tsk status 42 done             # change status
+tsk log                        # recent activity
 ```
 
-### With Claude Code
+### Claude Code
 
-tsk ships with a Claude Code skill. Clone the repo (or copy
-`.claude/skills/tsk/` into your project) and Claude can create, list,
-and modify tickets directly.
+tsk ships with a [Claude Code skill](skills/tsk/SKILL.md). Copy the
+`skills/` directory into your project and Claude can manage tickets
+directly — or just describe the format in your CLAUDE.md.
 
 ## Project structure
 
 ```
 your-repo/
-├── tsk.yaml          # config (optional, presence signals "this is a tsk project")
+├── tsk.yaml              # config (optional)
 └── tsk/
-    ├── project.md    # project description
-    ├── 001.md        # tickets
+    ├── project.md         # project description
+    ├── 001.md             # tickets
     ├── 002.md
     ├── 002/
-    │   └── 001.md    # comments on ticket 002
+    │   └── 001.md         # comments on ticket 002
     └── ...
 ```
 
-## Format specification
+Comments live in `NNN/MMM.md`. Sub-tasks are separate tickets with
+`parent: NNN` in front matter.
 
-See [SPEC.md](SPEC.md) for the full format definition. tsk is a file
-format — any tool that reads and writes these files correctly is a valid
-implementation.
+## Format spec
+
+tsk is a file format. Any tool that reads/writes these files correctly
+is a valid implementation. See [SPEC.md](SPEC.md) for the full
+definition.

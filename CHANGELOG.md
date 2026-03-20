@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-03-20 — Documentation
+
+- Rewrote README — shorter, scannable, optimized for quick understanding
+- Added contribution workflow to CLAUDE.md: tickets first, track progress,
+  definition of done
+- Closed ticket 011
+
 ## 2026-03-20 — Activity log
 
 - Added `tsk log [days]` — shows recent ticket activity from git history

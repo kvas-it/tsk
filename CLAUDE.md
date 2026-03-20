@@ -73,3 +73,24 @@ it works with directories of markdown files with YAML front matter.
 - Tooling language: Rust (when we need tooling — start with just files)
 - The format spec is the primary artifact; tools implement it
 - When something feels like friction, that's when we build a tool for it
+
+## How to contribute
+
+1. **Start with a ticket.** Before writing code, create or find a ticket
+   in `./tsk/` that describes the work. Use `tsk new "Title"` or create
+   the file directly.
+
+2. **Track progress.** Set ticket status to `in-progress` when you start,
+   `done` when you finish. Use `tsk status NNN in-progress`.
+
+3. **Update the changelog.** Add an entry to `CHANGELOG.md` describing
+   what changed.
+
+4. **Definition of done:**
+   - The code works and tests pass (`cargo test`)
+   - The ticket is marked `done`
+   - CHANGELOG.md is updated
+   - Changes are committed with a clear message
+
+5. **Keep it simple.** Prefer small, focused changes. The format spec
+   is the source of truth — when in doubt, read SPEC.md.
