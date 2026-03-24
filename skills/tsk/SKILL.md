@@ -46,9 +46,7 @@ matter including `created` and `author`.
 
 ## CLI
 
-If the `tsk` CLI is installed, prefer it for listing and status changes:
-- `tsk list [status]` — list tickets, optionally filtered
-- `tsk new [title]` — create a ticket
-- `tsk status <N> <status>` — change ticket status
+If the `tsk` binary is available, prefer it over direct file manipulation.
+Run `tsk` with no arguments to see available commands.
 
 Fall back to reading/writing files directly if the CLI is not available.
