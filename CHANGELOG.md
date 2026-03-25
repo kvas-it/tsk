@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-03-25 — Recurring tasks (`tsk spawn`)
+
+- Added `tsk spawn <N>` — creates a child ticket from any ticket,
+  with the parent's title + today's date (e.g. "Weekly audit (2026-03-25)").
+- Documented recurring task pattern in SPEC.md: use a template ticket
+  and spawn instances from it. Projects can add `template` status.
+- 50 tests (26 unit + 24 integration)
+- Ticket 018
+
 ## 2026-03-25 — `tsk init` command
 
 - Added `tsk init` — creates `tsk.yaml` and `tsk/` in the current directory.

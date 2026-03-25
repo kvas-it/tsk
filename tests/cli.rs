@@ -97,6 +97,39 @@ fn new_with_parent_short_flag() {
     cleanup(&dir);
 }
 
+// --- tsk spawn ---
+
+#[test]
+fn spawn_creates_child_with_date_in_title() {
+    let dir = setup_project();
+    write_ticket(
+        &dir, 1,
+        "---\nstatus: template\n---\n\n# Weekly audit\n",
+    );
+    let (stdout, _, ok) = run(&dir, &["spawn", "1"]);
+    assert!(ok);
+    assert_eq!(stdout.trim(), "002.md");
+
+    let content = fs::read_to_string(dir.join("tsk/002.md")).unwrap();
+    assert!(content.contains("parent: 1"));
+    assert!(content.contains("status: open"));
+    // Title should contain the template title and a date.
+    assert!(content.contains("Weekly audit ("));
+    // Check it has a date-like pattern (YYYY-MM-DD).
+    assert!(content.contains("202"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn spawn_nonexistent_ticket_fails() {
+    let dir = setup_project();
+    let (_, stderr, ok) = run(&dir, &["spawn", "99"]);
+    assert!(!ok);
+    assert!(stderr.contains("not found"));
+    cleanup(&dir);
+}
+
 #[test]
 fn new_with_nonexistent_parent_fails() {
     let dir = setup_project();

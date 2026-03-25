@@ -94,6 +94,16 @@ allowed — a sub-task can itself be a parent.
 Tools SHOULD treat sub-tasks with a non-existent parent the same as
 top-level tickets (orphan tolerance).
 
+#### Recurring tasks
+
+A recurring task is a ticket that serves as a template. Each time the
+task needs to be performed, a new child ticket (instance) is created
+with `parent` pointing to the template.
+
+Projects that use recurring tasks MAY add a `template` status to their
+configured statuses to distinguish templates from regular tickets.
+This is a convention, not a requirement — any ticket can be spawned from.
+
 #### Custom fields
 
 Any additional YAML fields are allowed. Tools MUST preserve fields they

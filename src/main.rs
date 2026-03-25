@@ -497,6 +497,27 @@ fn cmd_new(
     println!("{filename}");
 }
 
+fn cmd_spawn(
+    dir: &Path, config: &Config, tickets: &[Ticket],
+    template: &Ticket,
+) {
+    let num = next_number(tickets);
+    let filename = format!(
+        "{:0>width$}.md", num, width = config.digits
+    );
+    let path = dir.join(&filename);
+    let date = today();
+    let title = format!("{} ({})", template.title, date);
+
+    let content = format!(
+        "---\nstatus: open\ncreated: {date}\nparent: {}\n---\n\n\
+         # {title}\n\n",
+        template.number,
+    );
+    fs::write(&path, &content).expect("can't write ticket file");
+    println!("{filename}");
+}
+
 fn cmd_status(
     ticket: &Ticket, new_status: &str, config: &Config,
 ) {
@@ -784,6 +805,7 @@ fn usage() {
     eprintln!("usage:");
     eprintln!("  tsk init                       Initialize a new project");
     eprintln!("  tsk new [--parent N] [title]   Create a new ticket");
+    eprintln!("  tsk spawn <N>                  Create instance of a recurring ticket");
     eprintln!("  tsk list [status...]           List tickets (tree view)");
     eprintln!("  tsk list -<status>             Exclude a status");
     eprintln!("  tsk show <N>                   Show a ticket");
@@ -831,6 +853,16 @@ fn main() {
             cmd_new(
                 &dir, &config, &tickets, title.as_deref(), parent,
             );
+        }
+        "spawn" => {
+            if args.len() < 3 {
+                eprintln!("usage: tsk spawn <number>");
+                std::process::exit(1);
+            }
+            let template = require_ticket(
+                &tickets, &args[2], config.digits,
+            );
+            cmd_spawn(&dir, &config, &tickets, template);
         }
         "log" => {
             let days: u32 = args.get(2)
