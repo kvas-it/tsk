@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-25 — Integration tests & CI
+
+- Added 19 integration tests (`tests/cli.rs`) — run the binary against
+  temp projects and assert on output. Covers: new, list (flat, tree,
+  filters, orphans, ancestor markers), show (basic, children, parent
+  chain), status changes, error cases.
+- Added GitHub Actions CI (`.github/workflows/ci.yml`) — runs
+  `cargo test` on push to main and on PRs.
+- 45 tests total (26 unit + 19 integration)
+- Tickets 015, 016
+
 ## 2026-03-25 — Task nesting
 
 - Added `parent` as a documented optional field in SPEC.md
