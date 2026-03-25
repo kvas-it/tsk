@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-25 — Task nesting
+
+- Added `parent` as a documented optional field in SPEC.md
+- `tsk new --parent N` (or `-p N`) creates sub-tasks
+- `tsk list` shows tree view — children indented under parents
+- Filtered parents shown with `..` marker to preserve tree context
+- `tsk show` displays parent chain for sub-tasks, lists children
+- Orphan tickets (parent doesn't exist) shown at top level
+- 26 tests (up from 18)
+- Ticket 014
+
 ## 2026-03-20 — Show formatting fix
 
 - Fixed `tsk show` printing two blank lines between header and body (now one)

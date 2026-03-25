@@ -95,6 +95,7 @@ struct Ticket {
     number: u32,
     title: String,
     status: String,
+    parent: Option<u32>,
     path: PathBuf,
 }
 
@@ -119,12 +120,13 @@ fn scan_tickets(dir: &Path, digits: usize) -> Vec<Ticket> {
 
         let content = fs::read_to_string(entry.path())
             .unwrap_or_default();
-        let (status, title) = parse_ticket(&content);
+        let (status, title, parent) = parse_ticket(&content);
 
         tickets.push(Ticket {
             number: num,
             title,
             status,
+            parent,
             path: entry.path(),
         });
     }
@@ -132,10 +134,11 @@ fn scan_tickets(dir: &Path, digits: usize) -> Vec<Ticket> {
     tickets
 }
 
-/// Extract status from front matter and title from first H1.
-fn parse_ticket(content: &str) -> (String, String) {
+/// Extract status, title, and parent from front matter and body.
+fn parse_ticket(content: &str) -> (String, String, Option<u32>) {
     let mut status = "open".to_string();
     let mut title = String::new();
+    let mut parent = None;
     let mut in_fm = false;
     let mut past_fm = false;
 
@@ -153,6 +156,9 @@ fn parse_ticket(content: &str) -> (String, String) {
             if let Some(rest) = line.strip_prefix("status:") {
                 status = rest.trim().to_string();
             }
+            if let Some(rest) = line.strip_prefix("parent:") {
+                parent = rest.trim().parse::<u32>().ok();
+            }
         }
         if past_fm && title.is_empty() {
             if let Some(rest) = line.strip_prefix("# ") {
@@ -163,7 +169,7 @@ fn parse_ticket(content: &str) -> (String, String) {
             break;
         }
     }
-    (status, title)
+    (status, title, parent)
 }
 
 fn next_number(tickets: &[Ticket]) -> u32 {
@@ -268,35 +274,129 @@ fn matches_filter(status: &str, filter: &Option<StatusFilter>) -> bool {
 
 // --- Commands ---
 
+/// Check if a ticket or any of its descendants match the filter.
+fn subtree_matches_filter(
+    ticket: &Ticket, tickets: &[Ticket],
+    filter: &Option<StatusFilter>,
+) -> bool {
+    if matches_filter(&ticket.status, filter) {
+        return true;
+    }
+    // Check children recursively.
+    tickets.iter()
+        .filter(|t| t.parent == Some(ticket.number))
+        .any(|t| subtree_matches_filter(t, tickets, filter))
+}
+
 fn cmd_list(
     tickets: &[Ticket], filter: &Option<StatusFilter>,
     digits: usize,
 ) {
+    // Determine which tickets are visible: either they match the
+    // filter directly, or they're ancestors of tickets that do
+    // (shown as context to preserve tree structure).
+    let visible: Vec<u32> = tickets.iter()
+        .filter(|t| subtree_matches_filter(t, tickets, filter))
+        .map(|t| t.number)
+        .collect();
+
     let max_status_len = tickets.iter()
-        .filter(|t| matches_filter(&t.status, filter))
+        .filter(|t| visible.contains(&t.number))
         .map(|t| t.status.len())
         .max()
         .unwrap_or(4);
 
-    for t in tickets {
-        if !matches_filter(&t.status, filter) { continue; }
+    // Print tickets as a tree: top-level first, then recurse.
+    fn print_tree(
+        parent: Option<u32>, tickets: &[Ticket],
+        visible: &[u32], filter: &Option<StatusFilter>,
+        digits: usize, max_status_len: usize, depth: usize,
+    ) {
+        let indent = "  ".repeat(depth);
+        for t in tickets {
+            if t.parent != parent { continue; }
+            if !visible.contains(&t.number) { continue; }
+
+            let dimmed = !matches_filter(&t.status, filter);
+            let marker = if dimmed { "  .." } else { "" };
+
+            println!(
+                "{indent}{:0>w$}  {:<sw$}  {}{marker}",
+                t.number, t.status, t.title,
+                w = digits, sw = max_status_len,
+            );
+
+            // Print children.
+            print_tree(
+                Some(t.number), tickets, visible, filter,
+                digits, max_status_len, depth + 1,
+            );
+        }
+    }
+
+    print_tree(
+        None, tickets, &visible, filter,
+        digits, max_status_len, 0,
+    );
+
+    // Orphans: tickets whose parent doesn't exist. Show at top level.
+    let has_parent_not_in_tickets: Vec<&Ticket> = tickets.iter()
+        .filter(|t| {
+            if let Some(p) = t.parent {
+                !tickets.iter().any(|other| other.number == p)
+            } else {
+                false
+            }
+        })
+        .filter(|t| visible.contains(&t.number))
+        .collect();
+
+    for t in has_parent_not_in_tickets {
+        let dimmed = !matches_filter(&t.status, filter);
+        let marker = if dimmed { "  .." } else { "" };
         println!(
-            "{:0>w$}  {:<sw$}  {}",
+            "{:0>w$}  {:<sw$}  {}{marker}",
             t.number, t.status, t.title,
             w = digits, sw = max_status_len,
         );
     }
 }
 
-fn cmd_show(ticket: &Ticket, digits: usize) {
+fn cmd_show(ticket: &Ticket, tickets: &[Ticket], digits: usize) {
     let content = fs::read_to_string(&ticket.path)
         .expect("can't read ticket file");
 
-    println!(
-        "{:0>w$}  [{}]  {}",
-        ticket.number, ticket.status, ticket.title,
-        w = digits,
-    );
+    // Show parent chain if this is a sub-task.
+    if let Some(p) = ticket.parent {
+        let mut chain = Vec::new();
+        let mut current = Some(p);
+        while let Some(num) = current {
+            if let Some(t) = find_ticket(tickets, num) {
+                chain.push(format!("{:0>w$} {}", t.number, t.title, w = digits));
+                current = t.parent;
+            } else {
+                chain.push(format!("{:0>w$} (not found)", num, w = digits));
+                break;
+            }
+        }
+        chain.reverse();
+        for (i, entry) in chain.iter().enumerate() {
+            let indent = "  ".repeat(i);
+            println!("{indent}{entry}");
+        }
+        let indent = "  ".repeat(chain.len());
+        println!(
+            "{indent}{:0>w$}  [{}]  {}",
+            ticket.number, ticket.status, ticket.title,
+            w = digits,
+        );
+    } else {
+        println!(
+            "{:0>w$}  [{}]  {}",
+            ticket.number, ticket.status, ticket.title,
+            w = digits,
+        );
+    }
     println!();
 
     // Print the body (everything after the title).
@@ -328,12 +428,42 @@ fn cmd_show(ticket: &Ticket, digits: usize) {
             println!("{line}");
         }
     }
+
+    // Show children.
+    let children: Vec<&Ticket> = tickets.iter()
+        .filter(|t| t.parent == Some(ticket.number))
+        .collect();
+    if !children.is_empty() {
+        if body_started { println!(); }
+        println!("Sub-tasks:");
+        let max_status_len = children.iter()
+            .map(|t| t.status.len())
+            .max()
+            .unwrap_or(4);
+        for child in &children {
+            println!(
+                "  {:0>w$}  {:<sw$}  {}",
+                child.number, child.status, child.title,
+                w = digits, sw = max_status_len,
+            );
+        }
+    }
 }
 
 fn cmd_new(
     dir: &Path, config: &Config, tickets: &[Ticket],
-    title: Option<&str>,
+    title: Option<&str>, parent: Option<u32>,
 ) {
+    if let Some(p) = parent {
+        if find_ticket(tickets, p).is_none() {
+            eprintln!(
+                "error: parent ticket {:0>w$} not found", p,
+                w = config.digits,
+            );
+            std::process::exit(1);
+        }
+    }
+
     if !dir.exists() {
         fs::create_dir_all(dir).expect("can't create task directory");
     }
@@ -346,8 +476,13 @@ fn cmd_new(
     let title_text = title.unwrap_or("TODO");
     let date = today();
 
+    let parent_line = match parent {
+        Some(p) => format!("parent: {p}\n"),
+        None => String::new(),
+    };
     let content = format!(
-        "---\nstatus: open\ncreated: {date}\n---\n\n# {title_text}\n\n"
+        "---\nstatus: open\ncreated: {date}\n{parent_line}---\n\n\
+         # {title_text}\n\n"
     );
     fs::write(&path, &content).expect("can't write ticket file");
 
@@ -513,7 +648,7 @@ fn extract_ticket_stem(path: &str, config: &Config) -> Option<String> {
 /// Get a ticket title by reading the file (for current state).
 fn ticket_title_from_file(path: &Path) -> String {
     let content = fs::read_to_string(path).unwrap_or_default();
-    let (_, title) = parse_ticket(&content);
+    let (_, title, _) = parse_ticket(&content);
     title
 }
 
@@ -527,7 +662,7 @@ fn ticket_title_at_commit(
     match output {
         Ok(out) => {
             let content = String::from_utf8_lossy(&out.stdout);
-            let (_, title) = parse_ticket(&content);
+            let (_, title, _) = parse_ticket(&content);
             title
         }
         Err(_) => String::new(),
@@ -589,15 +724,50 @@ fn require_ticket<'a>(
     ticket
 }
 
+/// Parse `tsk new` arguments: extract --parent N and the remaining
+/// words as the title.
+fn parse_new_args(args: &[String]) -> (Option<String>, Option<u32>) {
+    let mut parent = None;
+    let mut title_parts = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--parent" || args[i] == "-p" {
+            i += 1;
+            if i < args.len() {
+                parent = args[i].parse::<u32>().ok();
+                if parent.is_none() {
+                    eprintln!(
+                        "error: '{}' is not a valid ticket number",
+                        args[i],
+                    );
+                    std::process::exit(1);
+                }
+            } else {
+                eprintln!("error: --parent requires a ticket number");
+                std::process::exit(1);
+            }
+        } else {
+            title_parts.push(args[i].as_str());
+        }
+        i += 1;
+    }
+    let title = if title_parts.is_empty() {
+        None
+    } else {
+        Some(title_parts.join(" "))
+    };
+    (title, parent)
+}
+
 fn usage() {
     eprintln!("tsk — task management with markdown files\n");
     eprintln!("usage:");
-    eprintln!("  tsk new [title]           Create a new ticket");
-    eprintln!("  tsk list [status...]      List tickets");
-    eprintln!("  tsk list -<status>        Exclude a status");
-    eprintln!("  tsk show <N>              Show a ticket");
-    eprintln!("  tsk status <N> <status>   Change ticket status");
-    eprintln!("  tsk log [days]            Recent activity (default: 7 days)");
+    eprintln!("  tsk new [--parent N] [title]   Create a new ticket");
+    eprintln!("  tsk list [status...]           List tickets (tree view)");
+    eprintln!("  tsk list -<status>             Exclude a status");
+    eprintln!("  tsk show <N>                   Show a ticket");
+    eprintln!("  tsk status <N> <status>        Change ticket status");
+    eprintln!("  tsk log [days]                 Recent activity (default: 7 days)");
 }
 
 // --- Main ---
@@ -627,15 +797,13 @@ fn main() {
             let ticket = require_ticket(
                 &tickets, &args[2], config.digits,
             );
-            cmd_show(ticket, config.digits);
+            cmd_show(ticket, &tickets, config.digits);
         }
         "new" => {
-            let title = if args.len() > 2 {
-                Some(args[2..].join(" "))
-            } else {
-                None
-            };
-            cmd_new(&dir, &config, &tickets, title.as_deref());
+            let (title, parent) = parse_new_args(&args[2..]);
+            cmd_new(
+                &dir, &config, &tickets, title.as_deref(), parent,
+            );
         }
         "log" => {
             let days: u32 = args.get(2)
@@ -693,16 +861,17 @@ mod tests {
 
     #[test]
     fn parse_ticket_full() {
-        let (status, title) = parse_ticket(
+        let (status, title, parent) = parse_ticket(
             "---\nstatus: in-progress\ncreated: 2026-03-20\n---\n\n# Do the thing\n\nBody.\n"
         );
         assert_eq!(status, "in-progress");
         assert_eq!(title, "Do the thing");
+        assert_eq!(parent, None);
     }
 
     #[test]
     fn parse_ticket_no_status_defaults_to_open() {
-        let (status, title) = parse_ticket(
+        let (status, title, _) = parse_ticket(
             "---\ncreated: 2026-03-20\n---\n\n# Title\n"
         );
         assert_eq!(status, "open");
@@ -710,8 +879,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_ticket_with_parent() {
+        let (status, title, parent) = parse_ticket(
+            "---\nstatus: open\nparent: 5\n---\n\n# Sub-task\n"
+        );
+        assert_eq!(status, "open");
+        assert_eq!(title, "Sub-task");
+        assert_eq!(parent, Some(5));
+    }
+
+    #[test]
     fn parse_ticket_with_custom_fields() {
-        let (status, title) = parse_ticket(
+        let (status, title, _) = parse_ticket(
             "---\nstatus: done\npriority: high\ntags: [a, b]\n---\n\n# Thing\n"
         );
         assert_eq!(status, "done");
@@ -760,8 +939,8 @@ mod tests {
     #[test]
     fn next_number_with_gap() {
         let tickets = vec![
-            Ticket { number: 1, title: String::new(), status: String::new(), path: PathBuf::new() },
-            Ticket { number: 5, title: String::new(), status: String::new(), path: PathBuf::new() },
+            Ticket { number: 1, title: String::new(), status: String::new(), parent: None, path: PathBuf::new() },
+            Ticket { number: 5, title: String::new(), status: String::new(), parent: None, path: PathBuf::new() },
         ];
         assert_eq!(next_number(&tickets), 6);
     }
@@ -812,5 +991,99 @@ mod tests {
         let f = parse_filters(&[]);
         assert!(matches_filter("open", &f));
         assert!(matches_filter("done", &f));
+    }
+
+    // --- New args parsing ---
+
+    #[test]
+    fn parse_new_args_title_only() {
+        let args: Vec<String> = vec!["Hello".into(), "world".into()];
+        let (title, parent) = parse_new_args(&args);
+        assert_eq!(title.as_deref(), Some("Hello world"));
+        assert_eq!(parent, None);
+    }
+
+    #[test]
+    fn parse_new_args_with_parent() {
+        let args: Vec<String> = vec![
+            "--parent".into(), "5".into(), "Sub-task".into(),
+        ];
+        let (title, parent) = parse_new_args(&args);
+        assert_eq!(title.as_deref(), Some("Sub-task"));
+        assert_eq!(parent, Some(5));
+    }
+
+    #[test]
+    fn parse_new_args_parent_short_flag() {
+        let args: Vec<String> = vec![
+            "-p".into(), "3".into(), "Child".into(),
+        ];
+        let (title, parent) = parse_new_args(&args);
+        assert_eq!(title.as_deref(), Some("Child"));
+        assert_eq!(parent, Some(3));
+    }
+
+    #[test]
+    fn parse_new_args_parent_at_end() {
+        let args: Vec<String> = vec![
+            "Title".into(), "--parent".into(), "7".into(),
+        ];
+        let (title, parent) = parse_new_args(&args);
+        assert_eq!(title.as_deref(), Some("Title"));
+        assert_eq!(parent, Some(7));
+    }
+
+    #[test]
+    fn parse_new_args_empty() {
+        let args: Vec<String> = vec![];
+        let (title, parent) = parse_new_args(&args);
+        assert_eq!(title, None);
+        assert_eq!(parent, None);
+    }
+
+    // --- Tree structure ---
+
+    fn make_ticket(
+        number: u32, status: &str, title: &str, parent: Option<u32>,
+    ) -> Ticket {
+        Ticket {
+            number, status: status.into(), title: title.into(),
+            parent, path: PathBuf::new(),
+        }
+    }
+
+    #[test]
+    fn subtree_matches_filter_direct() {
+        let tickets = vec![
+            make_ticket(1, "open", "Parent", None),
+            make_ticket(2, "done", "Child", Some(1)),
+        ];
+        let f = Some(StatusFilter::Include(vec!["open".into()]));
+        assert!(subtree_matches_filter(&tickets[0], &tickets, &f));
+        assert!(!subtree_matches_filter(&tickets[1], &tickets, &f));
+    }
+
+    #[test]
+    fn subtree_matches_filter_via_child() {
+        let tickets = vec![
+            make_ticket(1, "done", "Parent", None),
+            make_ticket(2, "open", "Child", Some(1)),
+        ];
+        let f = Some(StatusFilter::Include(vec!["open".into()]));
+        // Parent is "done" but child is "open" — parent subtree matches.
+        assert!(subtree_matches_filter(&tickets[0], &tickets, &f));
+    }
+
+    #[test]
+    fn subtree_matches_filter_deep_nesting() {
+        let tickets = vec![
+            make_ticket(1, "done", "Grandparent", None),
+            make_ticket(2, "done", "Parent", Some(1)),
+            make_ticket(3, "open", "Child", Some(2)),
+        ];
+        let f = Some(StatusFilter::Include(vec!["open".into()]));
+        assert!(subtree_matches_filter(&tickets[0], &tickets, &f));
+        assert!(subtree_matches_filter(&tickets[1], &tickets, &f));
+        assert!(subtree_matches_filter(&tickets[2], &tickets, &f));
     }
 }

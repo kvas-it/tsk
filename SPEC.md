@@ -81,6 +81,19 @@ A ticket file consists of:
 | `status`  | string | no       | `open`   | One of the configured statuses |
 | `created` | date   | no       | —        | Creation date (YYYY-MM-DD)     |
 
+#### Sub-tasks
+
+| Field    | Type    | Required | Default | Description                        |
+|----------|---------|----------|---------|------------------------------------|
+| `parent` | integer | no       | —       | Ticket number of the parent ticket |
+
+A ticket with a `parent` field is a sub-task of that parent. The value
+is the ticket number (not zero-padded). Arbitrary nesting depth is
+allowed — a sub-task can itself be a parent.
+
+Tools SHOULD treat sub-tasks with a non-existent parent the same as
+top-level tickets (orphan tolerance).
+
 #### Custom fields
 
 Any additional YAML fields are allowed. Tools MUST preserve fields they
@@ -88,8 +101,7 @@ don't understand when reading, modifying, and writing ticket files.
 
 There is no distinction between "standard optional" and "custom" fields
 at the format level. A tool may choose to understand `tags`, `assignee`,
-`priority`, `parent`, or any other field — but the format does not require
-it.
+`priority`, or any other field — but the format does not require it.
 
 ### Example
 
