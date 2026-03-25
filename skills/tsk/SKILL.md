@@ -10,6 +10,12 @@ You manage tasks stored as markdown files with YAML front matter.
 Read `tsk.yaml` (if present) to find the task directory and configuration.
 Defaults: dir `./tsk/`, digits `3`, statuses `open/in-progress/done`.
 
+## Starting a new project
+
+Run `tsk init` to create `tsk.yaml` and `tsk/` in the current directory.
+If the CLI is not available, create them manually. Other commands require
+an existing project.
+
 ## Quick reference
 
 **Create a ticket:** find the highest NNN.md, increment, write the file:
@@ -47,6 +53,7 @@ matter including `created` and `author`.
 ## CLI
 
 If the `tsk` binary is available, prefer it over direct file manipulation.
-Run `tsk` with no arguments to see available commands.
+Run `tsk` with no arguments to see available commands (this works even
+without a project). Other commands require an existing project.
 
 Fall back to reading/writing files directly if the CLI is not available.

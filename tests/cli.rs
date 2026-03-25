@@ -345,6 +345,48 @@ fn status_invalid_fails() {
     cleanup(&dir);
 }
 
+// --- tsk init ---
+
+#[test]
+fn init_creates_project() {
+    let dir = std::env::temp_dir()
+        .join(format!("tsk-init-{}", COUNTER.fetch_add(1, Ordering::SeqCst)));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let (stdout, _, ok) = run(&dir, &["init"]);
+    assert!(ok);
+    assert!(stdout.contains("Initialized"));
+    assert!(dir.join("tsk.yaml").exists());
+    assert!(dir.join("tsk").is_dir());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn init_idempotent_with_yaml() {
+    let dir = setup_project();
+    let (_, stderr, ok) = run(&dir, &["init"]);
+    assert!(ok);
+    assert!(stderr.contains("already initialized"));
+    cleanup(&dir);
+}
+
+#[test]
+fn init_idempotent_with_dir_only() {
+    let dir = std::env::temp_dir()
+        .join(format!("tsk-init-{}", COUNTER.fetch_add(1, Ordering::SeqCst)));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("tsk")).unwrap();
+    // No tsk.yaml, just the directory.
+
+    let (_, stderr, ok) = run(&dir, &["init"]);
+    assert!(ok);
+    assert!(stderr.contains("already initialized"));
+
+    cleanup(&dir);
+}
+
 // --- tsk (no args) ---
 
 #[test]

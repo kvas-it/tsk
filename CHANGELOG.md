@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-03-25 — `tsk init` command
+
+- Added `tsk init` — creates `tsk.yaml` and `tsk/` in the current directory.
+  Safe to run twice (detects existing project).
+- Updated skill to use `tsk init` instead of manual `mkdir`.
+- Ticket 017
+
 ## 2026-03-25 — Integration tests & CI
 
 - Added 19 integration tests (`tests/cli.rs`) — run the binary against

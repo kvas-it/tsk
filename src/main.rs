@@ -759,9 +759,30 @@ fn parse_new_args(args: &[String]) -> (Option<String>, Option<u32>) {
     (title, parent)
 }
 
+fn cmd_init() {
+    let cwd = env::current_dir().unwrap();
+
+    // Check if project already exists.
+    if cwd.join("tsk.yaml").exists() {
+        eprintln!("tsk project already initialized (tsk.yaml exists)");
+        return;
+    }
+    if cwd.join("tsk").is_dir() {
+        eprintln!("tsk project already initialized (tsk/ exists)");
+        return;
+    }
+
+    fs::create_dir_all(cwd.join("tsk"))
+        .expect("can't create tsk/ directory");
+    fs::write(cwd.join("tsk.yaml"), "")
+        .expect("can't write tsk.yaml");
+    println!("Initialized tsk project (tsk.yaml + tsk/)");
+}
+
 fn usage() {
     eprintln!("tsk — task management with markdown files\n");
     eprintln!("usage:");
+    eprintln!("  tsk init                       Initialize a new project");
     eprintln!("  tsk new [--parent N] [title]   Create a new ticket");
     eprintln!("  tsk list [status...]           List tickets (tree view)");
     eprintln!("  tsk list -<status>             Exclude a status");
@@ -777,6 +798,12 @@ fn main() {
 
     if args.len() < 2 {
         usage();
+        return;
+    }
+
+    // Handle init before find_project() since there's no project yet.
+    if args[1] == "init" {
+        cmd_init();
         return;
     }
 
